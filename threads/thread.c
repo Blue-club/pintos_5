@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* sleep state의 프로세스들을 저장한다.*/
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -49,6 +52,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static int64_t next_tick_to_awake = INT64_MAX;
+ 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -108,6 +113,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);	// sleep_list 추가
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -152,6 +158,58 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+}
+
+void 
+thread_sleep(int64_t ticks) {
+	struct thread *curr = thread_current();
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+
+	if (curr != idle_thread) {
+		curr->status = THREAD_BLOCKED;
+		curr->wakeup_ticks = ticks;
+		list_push_back (&sleep_list, &curr->elem);
+
+		if (next_tick_to_awake > ticks)
+		{
+			update_next_tick_to_awake(ticks);
+		}
+	}
+	schedule();
+	intr_set_level (old_level);
+}
+
+/*
+wake up tread if wakeup_ticks of thread is over ticks
+*/
+void
+thread_awake(int64_t ticks)
+{
+	struct list_elem *e = list_begin(&sleep_list);
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+	next_tick_to_awake = INT64_MAX;
+	while (e != list_end(&sleep_list))
+	{
+		struct thread *t = list_entry(e, struct thread, elem);
+		if (t->wakeup_ticks <= ticks)
+		{
+			e = list_remove(e);
+			thread_unblock(t);	// unblock the thead and make it ready to be scheduled
+		}
+		else {
+			if (t->wakeup_ticks < next_tick_to_awake)
+			{
+				next_tick_to_awake = t->wakeup_ticks;
+
+			}
+			e = list_next(e);
+		}		
+	}
+	intr_set_level(old_level);
 }
 
 /* Prints thread statistics. */
@@ -345,6 +403,18 @@ int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
 	return 0;
+}
+
+/* update minimum tick of thread */
+void 
+update_next_tick_to_awake(int64_t tick) {
+	next_tick_to_awake = tick;
+}
+
+/* return next_tick_to_awake */
+int64_t 
+get_next_tick_to_awake(void) {
+	return next_tick_to_awake; 
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
