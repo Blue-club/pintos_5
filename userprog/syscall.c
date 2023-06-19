@@ -66,7 +66,7 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	int systemcall_num = f->R.rax;
-	printf("%d\n", systemcall_num);
+	// printf("%d\n", systemcall_num);
 
 	switch (systemcall_num)
 	{
@@ -77,7 +77,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		exit(f->R.rdi);
 		break;
 	case SYS_FORK:
-		f->R.rax = fork(f->R.rdi, f);
+		f->R.rax = fork(f->R.rdi, f->R.rsi);
 		break;
 	case SYS_EXEC:
 		f->R.rax = exec(f->R.rdi);
